@@ -54,7 +54,9 @@ residue 9: -28.4389, 60.3628, 64.7192
 
 ### Per domain (chain, or chain + residue range)
 
-Each `--domains` token collapses to a single, combined centre of mass:
+`--domains` always computes **one** combined centre of mass per
+invocation. A comma joins chains/ranges into that one domain — e.g. `A,B`
+means "chains A and B together", not "chain A, then chain B":
 
 ```bash
 $ histo-com 8gvi_1_aligned.cif --mode domains --domains P
@@ -64,37 +66,37 @@ $ histo-com 8gvi_1_aligned.cif --mode domains --domains L:1-180
 L:1-180: -45.8994, 33.1512, 49.5114
 
 $ histo-com 8gvi_1_aligned.cif --mode domains --domains A,B
-A: -47.6114, 102.1434, 70.3441
-B: -39.6606, 98.7206, 52.9095
+A,B: -43.2339, 100.2589, 60.7451
 ```
+
+To get results for several *separate* domains, run the command once per
+domain (the Python library's `com_by_domains()` can also take an
+iterable of separate domains in a single call — see
+[Library usage](#library-usage)).
 
 ### Marker PDB output
 
 Pass `--output`/`-o` to also write a small PDB file containing one
 pseudo-atom per computed centre of mass — useful for viewing the result
 alongside the structure in PyMOL, ChimeraX, etc. Each marker is a
-`HETATM` residue named `COM`, on its own chain (domains) or keeping the
-original residue numbering (residues):
+`HETATM` residue named `COM`, on its own chain when the domain maps to
+exactly one chain (chain `Z` for a multi-chain combined domain or the
+whole-structure marker), or keeping the original residue numbering
+(residues):
 
 ```bash
-$ histo-com 8gvi_1_aligned.cif --mode domains --domains P,L:1-180,A,B --output com.pdb
-P: -39.6074, 62.0183, 64.0741
-L:1-180: -45.8994, 33.1512, 49.5114
-A: -47.6114, 102.1434, 70.3441
-B: -39.6606, 98.7206, 52.9095
+$ histo-com 8gvi_1_aligned.cif --mode domains --domains A,B --output com.pdb
+A,B: -43.2339, 100.2589, 60.7451
 Wrote centre-of-mass marker(s) to com.pdb
 
 $ cat com.pdb
-HETATM    1  COM COM P   1     -39.607  62.018  64.074  1.00  0.00           C
-HETATM    2  COM COM L   2     -45.899  33.151  49.511  1.00  0.00           C
-HETATM    3  COM COM A   3     -47.611 102.143  70.344  1.00  0.00           C
-HETATM    4  COM COM B   4     -39.661  98.721  52.909  1.00  0.00           C
+HETATM    1  COM COM Z   1     -43.234 100.259  60.745  1.00  0.00           C
 ```
 
 ## Selector grammar
 
-Used by both `--domains`/`--residues` and their library equivalents. A
-selector is a comma-separated list of tokens; each token is one of:
+Used by both `--domains`/`--residues` and their library equivalents. Each
+selector is built from tokens of the form:
 
 | Token | Meaning |
 |---|---|
@@ -104,9 +106,16 @@ selector is a comma-separated list of tokens; each token is one of:
 | `A:12` | residue 12 on chain `A` |
 | `A:1-180` | residues 1–180 on chain `A` |
 
-For `--mode domains`, each token produces **one** centre of mass (a range
-is treated as a single combined domain). For `--mode residues`, ranges
-**expand** — one centre of mass per residue.
+The two modes combine tokens differently:
+
+- **`--mode domains`**: a comma-separated **string** is **one domain** —
+  its tokens are combined into a single centre of mass (`A,B` = chains A
+  and B together). To compute several *separate* domains, either run the
+  command once per domain, or (library only) pass an iterable where each
+  element is its own domain, e.g. `["A", "B"]` -> two separate results.
+- **`--mode residues`**: tokens/ranges always **expand** — one centre of
+  mass per residue, regardless of whether the input is a string or an
+  iterable.
 
 ## Library usage
 
@@ -120,9 +129,9 @@ from histo_com import HistoCom
 h = HistoCom("8gvi_1_aligned.cif")
 
 h.com()                          # -> np.ndarray, whole-structure centre of mass
-h.com_by_domains(["P"])          # -> [np.ndarray]
-h.com_by_domains(["L:1-180"])    # -> [np.ndarray]
-h.com_by_domains(["A", "B"])     # -> [np.ndarray, np.ndarray]
+h.com_by_domains("P")            # -> [np.ndarray], one domain (chain P)
+h.com_by_domains("A,B")          # -> [np.ndarray], ONE combined domain (chains A+B together)
+h.com_by_domains(["A", "B"])     # -> [np.ndarray, np.ndarray], two SEPARATE domains
 
 h.com_by_residues(range(1, 10))  # -> 9 np.ndarrays, one per residue
 h.com_by_residues("A:1-9,B:12")  # selector strings also work
@@ -132,7 +141,9 @@ h.write_com_pdb("com.pdb", mode="domains", domains=["P", "L:1-180", "A", "B"])
 
 Domain/residue arguments accept a selector string, an iterable of chain
 letters, an iterable of residue numbers, or `DomainRef`/`ResidueRef`
-objects from `histo_com.selectors`.
+objects from `histo_com.selectors`. For domains, remember: a **string**
+is one (possibly multi-chain) domain; an **iterable** is several separate
+domains, one result per element.
 
 One-shot convenience functions are also available, each still parsing the
 file only once internally:

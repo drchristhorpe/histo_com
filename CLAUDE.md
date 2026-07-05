@@ -21,7 +21,7 @@ See [README.md](README.md) for user-facing usage and
 ```
 src/histo_com/
   core.py        # load_structure(), centre_of_mass(), HistoCom, convenience wrappers
-  selectors.py   # domain/residue selector string+iterable parsing (DomainRef, ResidueRef)
+  selectors.py   # domain/residue selector string+iterable parsing (DomainRef/DomainPart, ResidueRef)
   cli.py         # Click CLI (entry point: histo-com)
 tests/
   fixtures/      # real downloaded .cif/.pdb files used by the tests, keep committed
@@ -49,10 +49,19 @@ skills/histo-com/SKILL.md
   naively iterate `for atom in residue` on structures with altlocs (see
   `7r7y_1_aligned.pdb`, which has real altlocs, e.g. chain A residue 2) —
   that skips disorder resolution and won't match.
-- `--mode domains` selectors collapse each token to **one** combined COM;
+- `--mode domains` selectors collapse to **one** combined COM;
   `--mode residues` selectors **expand** ranges to one COM per residue.
   This asymmetry is intentional (see README's selector grammar table) —
   don't "fix" one to match the other.
+- For domains specifically: a comma-separated **string** (`"A,B"`) is ONE
+  domain whose parts (`DomainPart`s inside a single `DomainRef`) are
+  combined into one COM — this was an explicit correction from the user,
+  who wants "chains A,B" to mean "the combined mass of A and B", not two
+  separate results. An **iterable** (`["A", "B"]`) still yields one COM
+  *per element* (each element parsed independently, itself possibly a
+  compound comma string). Don't conflate these two input shapes — the
+  CLI can only ever supply the string form, so `--domains A,B` always
+  produces exactly one output line.
 - Only the first model (`structure[0]`) is used everywhere.
 - `write_com_pdb()`/`--output` writes marker-only PDB files (`HETATM`
   pseudo-atoms named `COM`), not the original structure merged with
@@ -66,10 +75,10 @@ skills/histo-com/SKILL.md
 - Fixtures map directly to the use cases the tool was built against:
   `1hhk_1_abd.cif` (single chain, whole-structure), `1hhk_1_peptide.cif`
   (single chain, per-residue), `8gvi_1_aligned.cif` (multi-chain, domain
-  selectors: `P`, `L:1-180`, `A,B`), `7r7y_1_aligned.pdb` (native PDB
-  format, a genuine partial-range chain domain, and real altlocs). If you
-  add behaviour, prefer extending these existing fixtures over adding new
-  downloads.
+  selectors: `P`, `L:1-180`, combined `A,B`), `7r7y_1_aligned.pdb` (native
+  PDB format, a genuine partial-range chain domain, and real altlocs). If
+  you add behaviour, prefer extending these existing fixtures over adding
+  new downloads.
 - When changing selector parsing or COM math, add a case to
   `test_selectors.py`/`test_core.py` rather than only eyeballing CLI
   output.

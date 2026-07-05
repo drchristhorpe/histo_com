@@ -51,13 +51,13 @@ def test_cli_domains_mode_chain_range():
     assert lines[0].startswith("L:1-180:")
 
 
-def test_cli_domains_mode_chain_list():
+def test_cli_domains_mode_chain_list_is_one_combined_domain():
+    # "A,B" is one domain (chains A and B combined into one COM), not two.
     result = run(COMPLEX, "--mode", "domains", "--domains", "A,B")
     assert result.exit_code == 0, result.output
     lines = result.output.strip().splitlines()
-    assert len(lines) == 2
-    assert lines[0].startswith("A:")
-    assert lines[1].startswith("B:")
+    assert len(lines) == 1
+    assert lines[0].startswith("A,B:")
 
 
 def test_cli_domains_mode_requires_domains_option():
@@ -84,6 +84,7 @@ def test_cli_missing_file():
 
 
 def test_cli_output_writes_marker_pdb(tmp_path):
+    # A single --domains string is one combined domain -> one marker.
     out_path = tmp_path / "markers.pdb"
     result = run(
         COMPLEX, "--mode", "domains", "--domains", "P,L:1-180,A,B", "--output", str(out_path)
@@ -96,7 +97,7 @@ def test_cli_output_writes_marker_pdb(tmp_path):
 
     markers = load_structure(out_path)
     atoms = list(markers[0].get_atoms())
-    assert len(atoms) == 4
+    assert len(atoms) == 1
     assert all(a.get_parent().resname == "COM" for a in atoms)
 
 

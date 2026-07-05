@@ -153,18 +153,30 @@ class HistoCom:
         return centre_of_mass([self.model])
 
     def _resolve_domain(self, ref: DomainRef) -> tuple[str, np.ndarray]:
-        chain = _get_chain(self.model, ref.chain) if ref.chain else _default_chain(self.model)
-        if ref.start is None:
-            coord = centre_of_mass([chain])
-        else:
-            coord = centre_of_mass(_residues_in_range(chain, ref.start, ref.end))
-        return chain.id, coord
+        """Resolve a (possibly multi-part) domain to its combined centre
+        of mass, by gathering every part's residues into one homogeneous
+        list before averaging."""
+        residues: list = []
+        chain_ids: list[str] = []
+        for part in ref.parts:
+            chain = _get_chain(self.model, part.chain) if part.chain else _default_chain(self.model)
+            chain_ids.append(chain.id)
+            if part.start is None:
+                residues.extend(chain.get_unpacked_list())
+            else:
+                residues.extend(_residues_in_range(chain, part.start, part.end))
+        coord = centre_of_mass(residues)
+        unique_chain_ids = list(dict.fromkeys(chain_ids))
+        chain_id = unique_chain_ids[0] if len(unique_chain_ids) == 1 else _MARKER_CHAIN_ID
+        return chain_id, coord
 
     def com_by_domains(self, domains) -> list[np.ndarray]:
-        """Centre of mass per domain (chain, or chain + residue range).
+        """Centre of mass per domain.
 
-        ``domains`` may be a comma-separated selector string or an
-        iterable of chain letters / selector tokens.
+        ``domains`` may be a single selector string — a chain, a
+        chain+range, or several comma-joined chains/ranges combined into
+        one domain (e.g. ``"A,B"``) — or an iterable of such selectors,
+        each describing its own, separate domain.
         """
         refs = parse_domains(domains)
         return [self._resolve_domain(ref)[1] for ref in refs]

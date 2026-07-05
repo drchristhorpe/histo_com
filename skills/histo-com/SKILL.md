@@ -38,15 +38,21 @@ histo-com FILENAME [--mode {all,domains,residues}] [--domains SPEC] [--residues 
 ```
 
 - **Whole structure** (default mode): `histo-com structure.cif`
-- **One or more chains**: `histo-com structure.cif --mode domains --domains A,B`
+- **A single chain**: `histo-com structure.cif --mode domains --domains A`
+- **Several chains treated as ONE combined domain** (e.g. "the COM of the
+  heavy+light chain together"): `histo-com structure.cif --mode domains --domains A,B`
+  — this is **one** result (chains A and B's mass combined), not two.
 - **A chain restricted to a residue range** (one combined COM):
   `histo-com structure.cif --mode domains --domains A:1-180`
 - **Individual residues** (one COM per residue; ranges expand):
   `histo-com structure.cif --mode residues --residues 1-9`
   `histo-com structure.cif --mode residues --residues A:1-9,B:12`
 
-Selector rule of thumb: `--domains` tokens each collapse to **one** COM
-(good for "where is chain A" or "where is this domain"); `--residues`
+Selector rule of thumb: `--domains` always produces exactly **one** COM
+per CLI invocation — a comma joins parts (chains/ranges) into that one
+domain, it does not request multiple domains. If the user wants results
+for several *separate* domains (e.g. "the COM of chain P, and separately
+the COM of chain L"), run `histo-com` once per domain. `--residues`
 ranges **expand** to one COM per residue (good for "COM at each position
 along this range").
 
@@ -74,8 +80,7 @@ residue 2: ...
 residue 3: ...
 
 $ histo-com 8gvi_1_aligned.cif --mode domains --domains A,B --output com_markers.pdb
-A: ...
-B: ...
+A,B: -43.2339, 100.2589, 60.7451
 Wrote centre-of-mass marker(s) to com_markers.pdb
 ```
 

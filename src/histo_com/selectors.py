@@ -21,12 +21,21 @@ class ResidueRef:
 
 
 @dataclass(frozen=True)
-class DomainRef:
-    """A chain, or a residue range within a chain."""
+class DomainPart:
+    """A chain, or a residue range within a chain — one piece of a domain."""
 
     chain: str | None
     start: int | None = None
     end: int | None = None
+
+
+@dataclass(frozen=True)
+class DomainRef:
+    """A domain: one or more parts (chains/ranges) whose combined mass
+    defines a single centre of mass, e.g. a chain, a chain+range, or
+    several chains treated as one unit (``"A,B"``)."""
+
+    parts: tuple[DomainPart, ...]
 
 
 def _split_chain(token: str) -> tuple[str | None, str]:
@@ -57,17 +66,15 @@ def _tokenize(spec: str) -> list[str]:
     return tokens
 
 
-def parse_domain_token(token: str) -> DomainRef:
-    """Parse one domain token into a :class:`DomainRef`.
-
-    Accepts a :class:`DomainRef` (returned unchanged), a bare chain letter
-    (``"A"``), a bare residue range (``"1-180"``), or a chain-scoped range
-    (``"A:1-180"``) / chain-scoped single residue (``"A:12"``).
+def _parse_domain_part(token) -> DomainPart:
+    """Parse one domain *part*: a bare chain letter (``"A"``), a bare
+    residue range (``"1-180"``), or a chain-scoped range (``"A:1-180"``) /
+    chain-scoped single residue (``"A:12"``).
     """
-    if isinstance(token, DomainRef):
+    if isinstance(token, DomainPart):
         return token
     if isinstance(token, int):
-        return DomainRef(chain=None, start=token, end=token)
+        return DomainPart(chain=None, start=token, end=token)
 
     text = str(token).strip()
     if not text:
@@ -78,35 +85,60 @@ def parse_domain_token(token: str) -> DomainRef:
     if not rest:
         if chain is None:
             raise SelectorError(f"Empty domain token {token!r}")
-        return DomainRef(chain=chain)
+        return DomainPart(chain=chain)
 
     if _is_range(rest):
         start_s, _, end_s = rest.partition("-")
         start, end = int(start_s), int(end_s)
         if start > end:
             raise SelectorError(f"Invalid residue range {rest!r}: start > end")
-        return DomainRef(chain=chain, start=start, end=end)
+        return DomainPart(chain=chain, start=start, end=end)
 
     if rest.lstrip("+").isdigit():
         resnum = int(rest)
-        return DomainRef(chain=chain, start=resnum, end=resnum)
+        return DomainPart(chain=chain, start=resnum, end=resnum)
 
     if chain is None:
         # A bare alphabetic token with no ':' is a chain letter, e.g. "A".
-        return DomainRef(chain=text)
+        return DomainPart(chain=text)
 
     raise SelectorError(f"Could not parse domain token {token!r}")
 
 
+def parse_domain(token) -> DomainRef:
+    """Parse one domain into a :class:`DomainRef`.
+
+    A domain is a single chain/range, or several comma-joined parts that
+    are combined into one centre of mass, e.g. ``"A,B"`` (chains A and B
+    together as one domain) or ``"A,B:1-50"``.
+    """
+    if isinstance(token, DomainRef):
+        return token
+    if isinstance(token, (int, DomainPart)):
+        return DomainRef(parts=(_parse_domain_part(token),))
+
+    text = str(token).strip()
+    if not text:
+        raise SelectorError("Empty domain")
+    parts = tuple(_parse_domain_part(t) for t in _tokenize(text))
+    return DomainRef(parts=parts)
+
+
 def parse_domains(spec) -> list[DomainRef]:
-    """Parse a domains selector: a comma-separated string or an iterable of tokens."""
+    """Parse a domains selector.
+
+    A **string** is a single domain: comma-separated parts are combined
+    into one centre of mass (``"A,B"`` -> one domain spanning chains A and
+    B). An **iterable** describes multiple, separate domains, one per
+    element (``["A", "B"]`` -> two domains, each its own centre of mass);
+    an element may itself be a compound string such as ``"A,B"``.
+    """
     if isinstance(spec, str):
-        tokens = _tokenize(spec)
-    else:
-        tokens = list(spec)
-        if not tokens:
-            raise SelectorError("Empty selector")
-    return [parse_domain_token(t) for t in tokens]
+        return [parse_domain(spec)]
+    tokens = list(spec)
+    if not tokens:
+        raise SelectorError("Empty selector")
+    return [parse_domain(t) for t in tokens]
 
 
 def parse_residue_token(token) -> list[ResidueRef]:
@@ -140,12 +172,16 @@ def parse_residue_token(token) -> list[ResidueRef]:
     raise SelectorError(f"Could not parse residue token {token!r}")
 
 
+def _format_domain_part(part: DomainPart) -> str:
+    if part.start is None:
+        return part.chain
+    range_text = str(part.start) if part.start == part.end else f"{part.start}-{part.end}"
+    return f"{part.chain}:{range_text}" if part.chain else range_text
+
+
 def format_domain(ref: DomainRef) -> str:
     """Render a :class:`DomainRef` back to its canonical selector text."""
-    if ref.start is None:
-        return ref.chain
-    range_text = str(ref.start) if ref.start == ref.end else f"{ref.start}-{ref.end}"
-    return f"{ref.chain}:{range_text}" if ref.chain else range_text
+    return ",".join(_format_domain_part(p) for p in ref.parts)
 
 
 def format_residue(ref: ResidueRef) -> str:

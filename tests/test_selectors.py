@@ -1,6 +1,7 @@
 import pytest
 
 from histo_com.selectors import (
+    DomainPart,
     DomainRef,
     ResidueRef,
     SelectorError,
@@ -12,23 +13,39 @@ from histo_com.selectors import (
 
 
 def test_parse_domains_single_chain():
-    assert parse_domains("P") == [DomainRef(chain="P")]
+    assert parse_domains("P") == [DomainRef(parts=(DomainPart(chain="P"),))]
 
 
-def test_parse_domains_chain_list():
-    assert parse_domains("A,B") == [DomainRef(chain="A"), DomainRef(chain="B")]
+def test_parse_domains_chain_list_is_one_combined_domain():
+    # A comma-separated string is ONE domain: its parts are combined into
+    # a single centre of mass, not treated as separate domains.
+    assert parse_domains("A,B") == [
+        DomainRef(parts=(DomainPart(chain="A"), DomainPart(chain="B")))
+    ]
 
 
 def test_parse_domains_chain_range():
-    assert parse_domains("L:1-180") == [DomainRef(chain="L", start=1, end=180)]
+    assert parse_domains("L:1-180") == [DomainRef(parts=(DomainPart(chain="L", start=1, end=180),))]
 
 
 def test_parse_domains_bare_range():
-    assert parse_domains("1-180") == [DomainRef(chain=None, start=1, end=180)]
+    assert parse_domains("1-180") == [DomainRef(parts=(DomainPart(chain=None, start=1, end=180),))]
 
 
-def test_parse_domains_from_iterable():
-    assert parse_domains(["A", "B"]) == [DomainRef(chain="A"), DomainRef(chain="B")]
+def test_parse_domains_from_iterable_gives_separate_domains():
+    # An iterable of separate elements describes multiple, separate
+    # domains — unlike a single comma-joined string.
+    assert parse_domains(["A", "B"]) == [
+        DomainRef(parts=(DomainPart(chain="A"),)),
+        DomainRef(parts=(DomainPart(chain="B"),)),
+    ]
+
+
+def test_parse_domains_iterable_element_can_be_compound():
+    assert parse_domains(["A,B", "C"]) == [
+        DomainRef(parts=(DomainPart(chain="A"), DomainPart(chain="B"))),
+        DomainRef(parts=(DomainPart(chain="C"),)),
+    ]
 
 
 def test_parse_domains_invalid_range():
@@ -76,10 +93,14 @@ def test_parse_residues_from_tuple():
 @pytest.mark.parametrize(
     "ref,expected",
     [
-        (DomainRef(chain="P"), "P"),
-        (DomainRef(chain="A", start=1, end=180), "A:1-180"),
-        (DomainRef(chain=None, start=1, end=180), "1-180"),
-        (DomainRef(chain="A", start=12, end=12), "A:12"),
+        (DomainRef(parts=(DomainPart(chain="P"),)), "P"),
+        (DomainRef(parts=(DomainPart(chain="A", start=1, end=180),)), "A:1-180"),
+        (DomainRef(parts=(DomainPart(chain=None, start=1, end=180),)), "1-180"),
+        (DomainRef(parts=(DomainPart(chain="A", start=12, end=12),)), "A:12"),
+        (
+            DomainRef(parts=(DomainPart(chain="A"), DomainPart(chain="B"))),
+            "A,B",
+        ),
     ],
 )
 def test_format_domain(ref, expected):
@@ -99,5 +120,5 @@ def test_format_residue(ref, expected):
 
 def test_format_domain_round_trips_through_parse():
     for spec in ["P", "A,B", "L:1-180", "1-180", "A:12"]:
-        refs = parse_domains(spec)
-        assert [format_domain(r) for r in refs] == [t.strip() for t in spec.split(",")]
+        (ref,) = parse_domains(spec)
+        assert format_domain(ref) == spec

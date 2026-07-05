@@ -121,12 +121,27 @@ def test_complex_domain_chains_A_B():
     assert not np.allclose(coms[0], coms[1])
 
 
-def test_complex_domain_string_selector_matches_iterable():
+def test_complex_domain_comma_string_is_one_combined_domain():
+    # A single comma-separated STRING is one domain: its chains/ranges
+    # are combined into one centre of mass — unlike an iterable of
+    # separate elements, which yields one COM per element.
     h = HistoCom(COMPLEX)
-    from_string = h.com_by_domains("A,B")
-    from_iter = h.com_by_domains(["A", "B"])
-    for a, b in zip(from_string, from_iter):
-        assert np.allclose(a, b)
+    combined = h.com_by_domains("A,B")
+    assert len(combined) == 1
+
+    separate = h.com_by_domains(["A", "B"])
+    assert len(separate) == 2
+    assert not np.allclose(combined[0], separate[0])
+    assert not np.allclose(combined[0], separate[1])
+
+    # The combined COM must equal the manual mass-weighted average over
+    # both chains' atoms together.
+    chain_a, chain_b = h.model["A"], h.model["B"]
+    atoms = list(chain_a.get_atoms()) + list(chain_b.get_atoms())
+    coords = np.array([a.coord for a in atoms], dtype=np.float64)
+    masses = np.array([a.mass for a in atoms], dtype=np.float64)
+    expected = np.average(coords, axis=0, weights=masses)
+    assert np.allclose(combined[0], expected)
 
 
 def test_complex_domain_unknown_chain_raises():
@@ -208,8 +223,9 @@ def test_write_com_pdb_all_mode(tmp_path):
 
 
 def test_write_com_pdb_domains_mode(tmp_path):
+    # Separate domains are requested as an iterable, one marker each.
     h = HistoCom(COMPLEX)
-    domains = "P,L:1-180,A,B"
+    domains = ["P", "L:1-180", "A", "B"]
     expected = h.com_by_domains(domains)
     out = h.write_com_pdb(tmp_path / "markers.pdb", mode="domains", domains=domains)
 
@@ -219,6 +235,20 @@ def test_write_com_pdb_domains_mode(tmp_path):
         assert np.allclose(atom.coord, exp, atol=1e-3)
     # Each domain marker is placed on its own chain for traceability.
     assert [a.get_parent().get_parent().id for a in atoms] == ["P", "L", "A", "B"]
+
+
+def test_write_com_pdb_domains_mode_combined_string(tmp_path):
+    # A single comma-separated STRING is one combined domain: one marker,
+    # placed on the fallback marker chain since it spans several chains.
+    h = HistoCom(COMPLEX)
+    domains = "A,B"
+    expected = h.com_by_domains(domains)
+    out = h.write_com_pdb(tmp_path / "markers.pdb", mode="domains", domains=domains)
+
+    atoms = _read_marker_atoms(out)
+    assert len(atoms) == len(expected) == 1
+    assert np.allclose(atoms[0].coord, expected[0], atol=1e-3)
+    assert atoms[0].get_parent().get_parent().id == "Z"
 
 
 def test_write_com_pdb_residues_mode(tmp_path):

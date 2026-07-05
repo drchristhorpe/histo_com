@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking**: `--mode domains` / `com_by_domains()` now treats a
+  comma-separated **string** (e.g. `"A,B"`) as a single domain whose
+  chains/ranges are combined into one centre of mass, rather than as
+  multiple separate domains. To get several separate domains' worth of
+  results in one call, pass an **iterable** instead (e.g. `["A", "B"]`),
+  which still returns one COM per element; from the CLI, run the command
+  once per domain. `DomainRef` is now a container of one or more
+  `DomainPart`s rather than a single chain/range.
+
 ### Added
 
 - `HistoCom.write_com_pdb()` / CLI `--output`, `-o`: writes a PDB file
