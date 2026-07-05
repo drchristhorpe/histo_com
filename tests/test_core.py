@@ -186,3 +186,73 @@ def test_native_pdb_domain_matches_manual_average():
     masses = np.array([a.mass for a in atoms], dtype=np.float64)
     expected = np.average(coords, axis=0, weights=masses)
     assert np.allclose(com, expected)
+
+
+# -- write_com_pdb() ----------------------------------------------------------
+
+
+def _read_marker_atoms(path):
+    structure = load_structure(path)
+    return list(structure[0].get_atoms())
+
+
+def test_write_com_pdb_all_mode(tmp_path):
+    h = HistoCom(ABD)
+    out = h.write_com_pdb(tmp_path / "markers.pdb", mode="all")
+    assert out.is_file()
+
+    atoms = _read_marker_atoms(out)
+    assert len(atoms) == 1
+    assert atoms[0].get_parent().resname == "COM"
+    assert np.allclose(atoms[0].coord, h.com(), atol=1e-3)
+
+
+def test_write_com_pdb_domains_mode(tmp_path):
+    h = HistoCom(COMPLEX)
+    domains = "P,L:1-180,A,B"
+    expected = h.com_by_domains(domains)
+    out = h.write_com_pdb(tmp_path / "markers.pdb", mode="domains", domains=domains)
+
+    atoms = _read_marker_atoms(out)
+    assert len(atoms) == len(expected) == 4
+    for atom, exp in zip(atoms, expected):
+        assert np.allclose(atom.coord, exp, atol=1e-3)
+    # Each domain marker is placed on its own chain for traceability.
+    assert [a.get_parent().get_parent().id for a in atoms] == ["P", "L", "A", "B"]
+
+
+def test_write_com_pdb_residues_mode(tmp_path):
+    h = HistoCom(PEPTIDE)
+    expected = h.com_by_residues(range(1, 10))
+    out = h.write_com_pdb(tmp_path / "markers.pdb", mode="residues", residues="1-9")
+
+    atoms = _read_marker_atoms(out)
+    assert len(atoms) == len(expected) == 9
+    for atom, exp in zip(atoms, expected):
+        assert np.allclose(atom.coord, exp, atol=1e-3)
+    # Residue markers keep the original residue numbering.
+    assert [a.get_parent().id[1] for a in atoms] == list(range(1, 10))
+
+
+def test_write_com_pdb_handles_duplicate_residue_request(tmp_path):
+    # Requesting the same residue twice would otherwise collide on
+    # (chain, resSeq) when building the marker structure.
+    h = HistoCom(PEPTIDE)
+    out = h.write_com_pdb(tmp_path / "markers.pdb", mode="residues", residues="5,5")
+
+    atoms = _read_marker_atoms(out)
+    assert len(atoms) == 2
+    assert np.allclose(atoms[0].coord, atoms[1].coord, atol=1e-3)
+
+
+def test_write_com_pdb_returns_path(tmp_path):
+    h = HistoCom(ABD)
+    out_path = tmp_path / "subdir_does_not_need_to_exist_check.pdb"
+    result = h.write_com_pdb(out_path, mode="all")
+    assert result == out_path
+
+
+def test_write_com_pdb_unknown_mode_raises(tmp_path):
+    h = HistoCom(ABD)
+    with pytest.raises(ValueError):
+        h.write_com_pdb(tmp_path / "markers.pdb", mode="bogus")

@@ -54,6 +54,10 @@ skills/histo-com/SKILL.md
   This asymmetry is intentional (see README's selector grammar table) —
   don't "fix" one to match the other.
 - Only the first model (`structure[0]`) is used everywhere.
+- `write_com_pdb()`/`--output` writes marker-only PDB files (`HETATM`
+  pseudo-atoms named `COM`), not the original structure merged with
+  markers — that scope was confirmed with the user, don't silently expand
+  it to include the original atoms.
 
 ## Testing
 
@@ -72,7 +76,7 @@ skills/histo-com/SKILL.md
 
 ## Scope
 
-The CLI intentionally exposes exactly four options: `filename`, `--mode`,
-`--domains`, `--residues`. Don't add output-format flags or other options
-without checking with the user first — this was a deliberate constraint,
-not an oversight.
+The CLI intentionally exposes exactly five options: `filename`, `--mode`,
+`--domains`, `--residues`, `--output`. Don't add further output-format
+flags or other options without checking with the user first — this was a
+deliberate constraint, not an oversight.

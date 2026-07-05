@@ -34,7 +34,7 @@ installed package, use `uv run histo-com ...` there instead.)
 ## Usage
 
 ```
-histo-com FILENAME [--mode {all,domains,residues}] [--domains SPEC] [--residues SPEC]
+histo-com FILENAME [--mode {all,domains,residues}] [--domains SPEC] [--residues SPEC] [--output PATH]
 ```
 
 - **Whole structure** (default mode): `histo-com structure.cif`
@@ -56,6 +56,12 @@ A bare residue number/range with no `chain:` prefix (e.g. `--residues
 
 Output is one line per result: `<label>: x, y, z` in Ångströms.
 
+If the user wants to *see* the centre of mass (e.g. in PyMOL/ChimeraX),
+add `--output PATH.pdb`: this writes a small PDB file with one `HETATM`
+pseudo-atom (resName `COM`) per computed centre of mass, alongside the
+usual text output. It does not include the original structure's atoms —
+just the marker(s), for loading next to the original file in a viewer.
+
 ## Example
 
 ```bash
@@ -66,6 +72,11 @@ $ histo-com 8gvi_1_aligned.cif --mode residues --residues 1-3
 residue 1: ...
 residue 2: ...
 residue 3: ...
+
+$ histo-com 8gvi_1_aligned.cif --mode domains --domains A,B --output com_markers.pdb
+A: ...
+B: ...
+Wrote centre-of-mass marker(s) to com_markers.pdb
 ```
 
 Report the coordinates back to the user in whatever form they asked for

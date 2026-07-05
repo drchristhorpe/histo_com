@@ -140,6 +140,19 @@ def parse_residue_token(token) -> list[ResidueRef]:
     raise SelectorError(f"Could not parse residue token {token!r}")
 
 
+def format_domain(ref: DomainRef) -> str:
+    """Render a :class:`DomainRef` back to its canonical selector text."""
+    if ref.start is None:
+        return ref.chain
+    range_text = str(ref.start) if ref.start == ref.end else f"{ref.start}-{ref.end}"
+    return f"{ref.chain}:{range_text}" if ref.chain else range_text
+
+
+def format_residue(ref: ResidueRef) -> str:
+    """Render a :class:`ResidueRef` back to its canonical selector text."""
+    return f"{ref.chain}:{ref.resseq}" if ref.chain else str(ref.resseq)
+
+
 def parse_residues(spec) -> list[ResidueRef]:
     """Parse a residues selector: a comma-separated string or an iterable of tokens."""
     if isinstance(spec, str):

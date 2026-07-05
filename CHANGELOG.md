@@ -4,6 +4,20 @@ All notable changes to this project are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- `HistoCom.write_com_pdb()` / CLI `--output`, `-o`: writes a PDB file
+  with one `HETATM` pseudo-atom (resName `COM`) per computed centre of
+  mass, for viewing alongside the structure in a molecular viewer.
+  Domain markers are placed on the domain's own chain; residue markers
+  keep the original residue numbering; the whole-structure marker uses
+  chain `Z`.
+- `histo_com.selectors.format_domain()` / `format_residue()`: render a
+  `DomainRef`/`ResidueRef` back to its canonical selector text, shared
+  by the CLI's text output and the new marker labelling.
+
 ## [0.1.0] - 2026-07-05
 
 ### Added

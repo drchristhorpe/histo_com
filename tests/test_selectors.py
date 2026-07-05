@@ -4,6 +4,8 @@ from histo_com.selectors import (
     DomainRef,
     ResidueRef,
     SelectorError,
+    format_domain,
+    format_residue,
     parse_domains,
     parse_residues,
 )
@@ -69,3 +71,33 @@ def test_parse_residues_from_int_iterable():
 
 def test_parse_residues_from_tuple():
     assert parse_residues([("A", 5)]) == [ResidueRef(chain="A", resseq=5)]
+
+
+@pytest.mark.parametrize(
+    "ref,expected",
+    [
+        (DomainRef(chain="P"), "P"),
+        (DomainRef(chain="A", start=1, end=180), "A:1-180"),
+        (DomainRef(chain=None, start=1, end=180), "1-180"),
+        (DomainRef(chain="A", start=12, end=12), "A:12"),
+    ],
+)
+def test_format_domain(ref, expected):
+    assert format_domain(ref) == expected
+
+
+@pytest.mark.parametrize(
+    "ref,expected",
+    [
+        (ResidueRef(chain=None, resseq=5), "5"),
+        (ResidueRef(chain="A", resseq=12), "A:12"),
+    ],
+)
+def test_format_residue(ref, expected):
+    assert format_residue(ref) == expected
+
+
+def test_format_domain_round_trips_through_parse():
+    for spec in ["P", "A,B", "L:1-180", "1-180", "A:12"]:
+        refs = parse_domains(spec)
+        assert [format_domain(r) for r in refs] == [t.strip() for t in spec.split(",")]

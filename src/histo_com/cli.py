@@ -5,7 +5,13 @@ from __future__ import annotations
 import click
 
 from histo_com.core import HistoCom, StructureError
-from histo_com.selectors import SelectorError, parse_residues
+from histo_com.selectors import (
+    SelectorError,
+    format_domain,
+    format_residue,
+    parse_domains,
+    parse_residues,
+)
 
 
 def _format_vector(v) -> str:
@@ -39,7 +45,21 @@ def _format_vector(v) -> str:
     "Comma-separated residue numbers and/or ranges, "
     "e.g. '5', '1-9', or 'A:1-9,B:12'.",
 )
-def main(filename: str, mode: str, domains: str | None, residues: str | None) -> None:
+@click.option(
+    "--output",
+    "-o",
+    type=click.Path(dir_okay=False, writable=True),
+    default=None,
+    help="Write a PDB file with a pseudo-atom (HETATM, resName COM) marking "
+    "each computed centre of mass, for viewing alongside the structure.",
+)
+def main(
+    filename: str,
+    mode: str,
+    domains: str | None,
+    residues: str | None,
+    output: str | None,
+) -> None:
     """Compute the centre of mass of a 3D biological structure (PDB/mmCIF).
 
     FILENAME is the path to a .cif/.mmcif or .pdb/.ent structure file.
@@ -55,20 +75,22 @@ def main(filename: str, mode: str, domains: str | None, residues: str | None) ->
         if mode == "all":
             com = histo_com.com()
             click.echo(f"all: {_format_vector(com)}")
-            return
 
-        if mode == "domains":
-            coms = histo_com.com_by_domains(domains)
-            labels = [t.strip() for t in domains.split(",") if t.strip()]
-            for label, com in zip(labels, coms):
-                click.echo(f"{label}: {_format_vector(com)}")
-            return
+        elif mode == "domains":
+            refs = parse_domains(domains)
+            coms = histo_com.com_by_domains(refs)
+            for ref, com in zip(refs, coms):
+                click.echo(f"{format_domain(ref)}: {_format_vector(com)}")
 
-        refs = parse_residues(residues)
-        coms = histo_com.com_by_residues(refs)
-        for ref, com in zip(refs, coms):
-            label = f"{ref.chain}:{ref.resseq}" if ref.chain else str(ref.resseq)
-            click.echo(f"residue {label}: {_format_vector(com)}")
+        else:
+            refs = parse_residues(residues)
+            coms = histo_com.com_by_residues(refs)
+            for ref, com in zip(refs, coms):
+                click.echo(f"residue {format_residue(ref)}: {_format_vector(com)}")
+
+        if output:
+            histo_com.write_com_pdb(output, mode=mode, domains=domains, residues=residues)
+            click.echo(f"Wrote centre-of-mass marker(s) to {output}")
 
     except (StructureError, SelectorError) as exc:
         raise click.ClickException(str(exc)) from exc

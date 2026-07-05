@@ -81,3 +81,27 @@ def test_cli_unknown_chain_is_a_clean_error():
 def test_cli_missing_file():
     result = run("does_not_exist.cif")
     assert result.exit_code != 0
+
+
+def test_cli_output_writes_marker_pdb(tmp_path):
+    out_path = tmp_path / "markers.pdb"
+    result = run(
+        COMPLEX, "--mode", "domains", "--domains", "P,L:1-180,A,B", "--output", str(out_path)
+    )
+    assert result.exit_code == 0, result.output
+    assert f"Wrote centre-of-mass marker(s) to {out_path}" in result.output
+    assert out_path.is_file()
+
+    from histo_com.core import load_structure
+
+    markers = load_structure(out_path)
+    atoms = list(markers[0].get_atoms())
+    assert len(atoms) == 4
+    assert all(a.get_parent().resname == "COM" for a in atoms)
+
+
+def test_cli_output_all_mode(tmp_path):
+    out_path = tmp_path / "markers.pdb"
+    result = run(ABD, "-o", str(out_path))
+    assert result.exit_code == 0, result.output
+    assert out_path.is_file()

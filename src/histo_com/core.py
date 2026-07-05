@@ -7,12 +7,27 @@ from pathlib import Path
 from typing import Iterable
 
 import numpy as np
+from Bio.PDB.Atom import Atom
 from Bio.PDB.Chain import Chain
+from Bio.PDB.Model import Model
 from Bio.PDB.MMCIFParser import MMCIFParser
+from Bio.PDB.PDBIO import PDBIO
 from Bio.PDB.PDBParser import PDBParser
+from Bio.PDB.Residue import Residue
 from Bio.PDB.Structure import Structure
 
-from histo_com.selectors import DomainRef, ResidueRef, parse_domains, parse_residues
+from histo_com.selectors import (
+    DomainRef,
+    ResidueRef,
+    format_domain,
+    format_residue,
+    parse_domains,
+    parse_residues,
+)
+
+# Residue/atom naming used for the pseudo-atoms written by write_com_pdb().
+_MARKER_RESNAME = "COM"
+_MARKER_CHAIN_ID = "Z"
 
 _CIF_SUFFIXES = {".cif", ".mmcif"}
 _PDB_SUFFIXES = {".pdb", ".ent"}
@@ -137,11 +152,13 @@ class HistoCom:
         """Centre of mass over every atom in the first model."""
         return centre_of_mass([self.model])
 
-    def _domain_com(self, ref: DomainRef) -> np.ndarray:
+    def _resolve_domain(self, ref: DomainRef) -> tuple[str, np.ndarray]:
         chain = _get_chain(self.model, ref.chain) if ref.chain else _default_chain(self.model)
         if ref.start is None:
-            return centre_of_mass([chain])
-        return centre_of_mass(_residues_in_range(chain, ref.start, ref.end))
+            coord = centre_of_mass([chain])
+        else:
+            coord = centre_of_mass(_residues_in_range(chain, ref.start, ref.end))
+        return chain.id, coord
 
     def com_by_domains(self, domains) -> list[np.ndarray]:
         """Centre of mass per domain (chain, or chain + residue range).
@@ -150,12 +167,12 @@ class HistoCom:
         iterable of chain letters / selector tokens.
         """
         refs = parse_domains(domains)
-        return [self._domain_com(ref) for ref in refs]
+        return [self._resolve_domain(ref)[1] for ref in refs]
 
-    def _residue_com(self, ref: ResidueRef) -> np.ndarray:
+    def _resolve_residue(self, ref: ResidueRef) -> tuple[str, np.ndarray]:
         chain = _get_chain(self.model, ref.chain) if ref.chain else _default_chain(self.model)
         residue = _residue_by_number(chain, ref.resseq)
-        return centre_of_mass([residue])
+        return chain.id, centre_of_mass([residue])
 
     def com_by_residues(self, residues) -> list[np.ndarray]:
         """Centre of mass per residue (one per residue number, ranges expand).
@@ -164,7 +181,92 @@ class HistoCom:
         iterable of residue numbers / selector tokens.
         """
         refs = parse_residues(residues)
-        return [self._residue_com(ref) for ref in refs]
+        return [self._resolve_residue(ref)[1] for ref in refs]
+
+    def _com_markers(self, mode: str, domains=None, residues=None) -> list[tuple[str, int, str, np.ndarray]]:
+        """Resolve (chain_id, resseq, label, coord) rows for write_com_pdb()."""
+        if mode == "all":
+            return [(_MARKER_CHAIN_ID, 1, "all", self.com())]
+
+        if mode == "domains":
+            refs = parse_domains(domains)
+            rows = []
+            for i, ref in enumerate(refs, start=1):
+                chain_id, coord = self._resolve_domain(ref)
+                rows.append((chain_id, i, format_domain(ref), coord))
+            return rows
+
+        if mode == "residues":
+            refs = parse_residues(residues)
+            rows = []
+            for ref in refs:
+                chain_id, coord = self._resolve_residue(ref)
+                rows.append((chain_id, ref.resseq, format_residue(ref), coord))
+            return rows
+
+        raise ValueError(f"Unknown mode {mode!r}; expected 'all', 'domains', or 'residues'")
+
+    def write_com_pdb(self, output_path: str | Path, mode: str = "all", domains=None, residues=None) -> Path:
+        """Write a PDB file containing one pseudo-atom per computed centre
+        of mass, so it can be viewed alongside the structure in a
+        molecular viewer.
+
+        Each marker is a ``HETATM`` residue named ``COM`` with a single
+        atom also named ``COM``. ``mode``/``domains``/``residues`` follow
+        the same semantics as :meth:`com`, :meth:`com_by_domains`, and
+        :meth:`com_by_residues`.
+        """
+        rows = self._com_markers(mode, domains=domains, residues=residues)
+        output_path = Path(output_path)
+        _write_marker_pdb(rows, output_path)
+        return output_path
+
+
+def _write_marker_pdb(rows: list[tuple[str, int, str, np.ndarray]], output_path: Path) -> None:
+    """Write ``(chain_id, resseq, label, coord)`` rows as HETATM pseudo-atoms."""
+    if not rows:
+        raise StructureError("No centre-of-mass markers to write")
+
+    structure = Structure("com_markers")
+    model = Model(0)
+    structure.add(model)
+
+    chains: dict[str, Chain] = {}
+    seen_ids: set[tuple[str, int, str]] = set()
+    for serial, (chain_id, resseq, _label, coord) in enumerate(rows, start=1):
+        chain = chains.get(chain_id)
+        if chain is None:
+            chain = Chain(chain_id)
+            model.add(chain)
+            chains[chain_id] = chain
+
+        # Two selector tokens can resolve to the same (chain, residue
+        # number), e.g. overlapping domain ranges or a repeated residue
+        # token; disambiguate with an insertion code rather than crash.
+        icode = " "
+        for suffix in " ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+            icode = suffix
+            if (chain_id, resseq, icode) not in seen_ids:
+                break
+        seen_ids.add((chain_id, resseq, icode))
+
+        residue = Residue((f"H_{_MARKER_RESNAME}", resseq, icode), _MARKER_RESNAME, "")
+        atom = Atom(
+            name=_MARKER_RESNAME,
+            coord=np.asarray(coord, dtype=np.float64),
+            bfactor=0.0,
+            occupancy=1.0,
+            altloc=" ",
+            fullname=f" {_MARKER_RESNAME}",
+            serial_number=serial,
+            element="C",
+        )
+        residue.add(atom)
+        chain.add(residue)
+
+    io = PDBIO()
+    io.set_structure(structure)
+    io.save(str(output_path))
 
 
 def com_all(path: str | Path) -> np.ndarray:

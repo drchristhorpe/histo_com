@@ -23,13 +23,15 @@ pip install .
 ## CLI usage
 
 ```
-histo-com FILENAME [--mode {all,domains,residues}] [--domains SPEC] [--residues SPEC]
+histo-com FILENAME [--mode {all,domains,residues}] [--domains SPEC] [--residues SPEC] [--output PATH]
 ```
 
 - `FILENAME` — a `.cif`/`.mmcif` or `.pdb`/`.ent` structure file.
 - `--mode`, `-m` — `all` (default), `domains`, or `residues`.
 - `--domains`, `-d` — selector string, required for `--mode domains`.
 - `--residues`, `-r` — selector string, required for `--mode residues`.
+- `--output`, `-o` — write a PDB file with a pseudo-atom marking each
+  computed centre of mass (see [Marker PDB output](#marker-pdb-output)).
 
 ### Whole structure
 
@@ -64,6 +66,29 @@ L:1-180: -45.8994, 33.1512, 49.5114
 $ histo-com 8gvi_1_aligned.cif --mode domains --domains A,B
 A: -47.6114, 102.1434, 70.3441
 B: -39.6606, 98.7206, 52.9095
+```
+
+### Marker PDB output
+
+Pass `--output`/`-o` to also write a small PDB file containing one
+pseudo-atom per computed centre of mass — useful for viewing the result
+alongside the structure in PyMOL, ChimeraX, etc. Each marker is a
+`HETATM` residue named `COM`, on its own chain (domains) or keeping the
+original residue numbering (residues):
+
+```bash
+$ histo-com 8gvi_1_aligned.cif --mode domains --domains P,L:1-180,A,B --output com.pdb
+P: -39.6074, 62.0183, 64.0741
+L:1-180: -45.8994, 33.1512, 49.5114
+A: -47.6114, 102.1434, 70.3441
+B: -39.6606, 98.7206, 52.9095
+Wrote centre-of-mass marker(s) to com.pdb
+
+$ cat com.pdb
+HETATM    1  COM COM P   1     -39.607  62.018  64.074  1.00  0.00           C
+HETATM    2  COM COM L   2     -45.899  33.151  49.511  1.00  0.00           C
+HETATM    3  COM COM A   3     -47.611 102.143  70.344  1.00  0.00           C
+HETATM    4  COM COM B   4     -39.661  98.721  52.909  1.00  0.00           C
 ```
 
 ## Selector grammar
@@ -101,6 +126,8 @@ h.com_by_domains(["A", "B"])     # -> [np.ndarray, np.ndarray]
 
 h.com_by_residues(range(1, 10))  # -> 9 np.ndarrays, one per residue
 h.com_by_residues("A:1-9,B:12")  # selector strings also work
+
+h.write_com_pdb("com.pdb", mode="domains", domains=["P", "L:1-180", "A", "B"])
 ```
 
 Domain/residue arguments accept a selector string, an iterable of chain
