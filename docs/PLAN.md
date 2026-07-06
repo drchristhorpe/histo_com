@@ -14,7 +14,7 @@ structures held in PDB or mmCIF files. It ships as:
 - Python **3.14**, managed with **uv** (`uv venv`, `uv sync`, `uv run`, `uv build`)
 - **Biopython** for structure parsing (`Bio.PDB.MMCIFParser` / `PDBParser`)
 - **Click** for the CLI
-- `pyproject.toml` with a `src/` layout, `hatchling` build backend, and a
+- `pyproject.toml` with a `src/` layout, `uv_build` build backend, and a
   `[project.scripts]` entry point (`histo-com = "histo_com.cli:main"`)
 - `pytest` for tests
 
